@@ -1,0 +1,24 @@
+# app-build.yaml — build from source using kpack (no Dockerfile needed).
+# Requires registry-setup.sh to be run first.
+#
+# Supports two source types:
+#   Git URL:    build.source: https://github.com/my-org/my-service
+#   Local path: build.source: ./  (relative to this file)
+
+name: my-service
+itsi: ITSI-12345
+
+build:
+  source: https://github.com/my-org/my-service  # git URL or local path (e.g. ./)
+  revision: main                                  # git branch, tag, or commit SHA
+  tag: docker.io/myuser/my-service               # registry destination for built image
+
+port: 8080
+
+replicas:
+  min: 1
+  max: 3
+
+env:
+  - name: LOG_LEVEL
+    value: info
