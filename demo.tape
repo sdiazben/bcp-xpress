@@ -1,7 +1,7 @@
 # BCP Xpress Demo
 # Pre-requisites before recording:
 #   1. ArgoCD is installed and running (./argocd/scripts/setup.sh already done)
-#   2. Any previous hello-java app torn down: ./argocd/scripts/teardown.sh hello-java
+#   2. Any previous hello-go app torn down: ./argocd/scripts/teardown.sh hello-go
 #
 # Record with: vhs demo.tape
 
@@ -43,7 +43,7 @@ Sleep 6s
 Type "# Push source — GitHub Actions builds the image"
 Enter
 Sleep 1500ms
-Type "git add ../apps/hello-java ../manifests/hello-java && git commit -m 'app: hello-java' && git push"
+Type "git add ../apps/hello-go && git commit -m 'app: hello-go' && git push"
 Enter
 Sleep 5s
 
@@ -51,18 +51,18 @@ Sleep 5s
 Type "# ArgoCD watches the repo and syncs automatically..."
 Enter
 Sleep 1500ms
-Type "kubectl get application hello-java -n argocd -w"
+Type "kubectl get application hello-go -n argocd -w"
 Enter
 Sleep 180s
 Ctrl+C
 Sleep 500ms
 
 # ── 5. Show all resources ArgoCD deployed ──
-Type "kubectl get application hello-java -n argocd -o wide"
+Type "kubectl get application hello-go -n argocd -o wide"
 Enter
 Sleep 3s
 
-Type "kubectl get deploy,svc,pods -l app=hello-java"
+Type "kubectl get deploy,svc,pods -l app=hello-go"
 Enter
 Sleep 3s
 
@@ -70,7 +70,7 @@ Sleep 3s
 Type "# Hit the app"
 Enter
 Sleep 1500ms
-Type "kubectl port-forward svc/hello-java 8080:80 &"
+Type "kubectl port-forward svc/hello-go 8080:80 &"
 Enter
 Sleep 2s
 Type "curl -s http://localhost:8080/ | jq ."
