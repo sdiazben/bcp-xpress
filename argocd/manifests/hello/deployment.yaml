@@ -16,10 +16,10 @@ spec:
         app: hello
     spec:
       containers:
-      - name: hello
-        image: ghcr.io/sdiazben/hello:bootstrap
-        ports:
-        - containerPort: 8080
-        env:
-        - name: TARGET
-          value: "ArgoCD-with-GHA-build"
+        - name: hello
+          image: ghcr.io/sdiazben/hello:8e42bf48e70221f933edfea4bd025b0aebeb8ce4
+          ports:
+            - containerPort: 8080
+          env:
+            - name: TARGET
+              value: "ArgoCD-with-GHA-build"
