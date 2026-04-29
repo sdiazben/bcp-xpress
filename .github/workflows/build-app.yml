@@ -26,9 +26,11 @@ jobs:
         name: List apps with changed source
         run: |
           set -euo pipefail
+          # Only include apps whose directory still exists (skip deletions)
           changed=$(git diff --name-only HEAD^ HEAD -- 'apps/' \
             | awk -F/ 'NF>=2 {print $2}' \
-            | sort -u)
+            | sort -u \
+            | while read -r app; do [[ -d "apps/$app" ]] && echo "$app"; done)
           if [[ -z "$changed" ]]; then
             echo "any=false" >> "$GITHUB_OUTPUT"
             echo "apps=[]" >> "$GITHUB_OUTPUT"
