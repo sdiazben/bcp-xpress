@@ -16,12 +16,12 @@ spec:
         app: hello-go
     spec:
       containers:
-      - name: hello-go
-        image: ghcr.io/sdiazben/hello-go:bootstrap
-        ports:
-        - containerPort: 8080
-        env:
-        - name: APP_ENV
-          value: "demo"
-        - name: TEAM
-          value: "platform"
+        - name: hello-go
+          image: ghcr.io/sdiazben/hello-go:89cf3e0f7ead6cc525d16ffe8620c5bc68678e31
+          ports:
+            - containerPort: 8080
+          env:
+            - name: APP_ENV
+              value: "demo"
+            - name: TEAM
+              value: "platform"
