@@ -1,0 +1,27 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hello-go
+  labels:
+    app: hello-go
+    bcpxpress.yourco.io/itsi: ITSI-12345
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hello-go
+  template:
+    metadata:
+      labels:
+        app: hello-go
+    spec:
+      containers:
+        - name: hello-go
+          image: ghcr.io/sdiazben/hello-go:bb2339af1ecbfc29acc09b93dd2eccd014426fbd
+          ports:
+            - containerPort: 8080
+          env:
+            - name: APP_ENV
+              value: demo
+            - name: TEAM
+              value: platform
