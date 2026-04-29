@@ -81,19 +81,79 @@ jobs:
             --publish
           echo "IMAGE=${IMAGE}" >> "$GITHUB_ENV"
 
-      - name: Update manifest with new image tag
+      - name: Create or update manifest
         env:
           APP: ${{ matrix.app }}
         run: |
           set -euo pipefail
-          MANIFEST="argocd/manifests/${APP}/deployment.yaml"
+          MANIFEST_DIR="argocd/manifests/${APP}"
+          MANIFEST="${MANIFEST_DIR}/deployment.yaml"
+          DESCRIPTOR="apps/${APP}/bcp-xpress.yaml"
+
+          mkdir -p "$MANIFEST_DIR"
+
           if [[ ! -f "$MANIFEST" ]]; then
-            echo "❌ ${MANIFEST} not found — run argocd/scripts/deploy.sh for this app first"
-            exit 1
+            echo "📝 Manifest not found — creating from ${DESCRIPTOR}"
+
+            if [[ -f "$DESCRIPTOR" ]]; then
+              NAME=$(yq '.name // env(APP)' "$DESCRIPTOR")
+              PORT=$(yq '.port // 8080' "$DESCRIPTOR")
+              REPLICAS=$(yq '.replicas.min // 1' "$DESCRIPTOR")
+              ITSI=$(yq '.itsi // "unknown"' "$DESCRIPTOR")
+            else
+              NAME="${APP}"
+              PORT=8080
+              REPLICAS=1
+              ITSI="unknown"
+            fi
+
+            # Build deployment.yaml using yq (no heredoc)
+            yq -n '
+              .apiVersion = "apps/v1" |
+              .kind = "Deployment" |
+              .metadata.name = strenv(NAME) |
+              .metadata.labels.app = strenv(NAME) |
+              .metadata.labels["bcpxpress.yourco.io/itsi"] = strenv(ITSI) |
+              .spec.replicas = env(REPLICAS) |
+              .spec.selector.matchLabels.app = strenv(NAME) |
+              .spec.template.metadata.labels.app = strenv(NAME) |
+              .spec.template.spec.containers[0].name = strenv(NAME) |
+              .spec.template.spec.containers[0].image = strenv(IMAGE) |
+              .spec.template.spec.containers[0].ports[0].containerPort = env(PORT)
+            ' > "$MANIFEST"
+
+            # Append env vars from descriptor
+            if [[ -f "$DESCRIPTOR" ]]; then
+              ENV_COUNT=$(yq '.env | length // 0' "$DESCRIPTOR")
+              if [[ "$ENV_COUNT" -gt 0 ]]; then
+                yq -i '.spec.template.spec.containers[0].env = []' "$MANIFEST"
+                for ((i=0; i<ENV_COUNT; i++)); do
+                  KEY=$(yq ".env[$i].name" "$DESCRIPTOR")
+                  VAL=$(yq ".env[$i].value" "$DESCRIPTOR")
+                  export KEY VAL
+                  yq -i '.spec.template.spec.containers[0].env += [{"name": strenv(KEY), "value": strenv(VAL)}]' "$MANIFEST"
+                done
+              fi
+            fi
+
+            # Build service.yaml using yq (no heredoc)
+            yq -n '
+              .apiVersion = "v1" |
+              .kind = "Service" |
+              .metadata.name = strenv(NAME) |
+              .metadata.labels.app = strenv(NAME) |
+              .spec.selector.app = strenv(NAME) |
+              .spec.ports[0].port = 80 |
+              .spec.ports[0].targetPort = env(PORT)
+            ' > "${MANIFEST_DIR}/service.yaml"
+
+            echo "✅ Manifests created"
+          else
+            echo "📝 Updating image tag in existing manifest"
+            yq -i ".spec.template.spec.containers[0].image = strenv(IMAGE)" "$MANIFEST"
           fi
-          yq -i ".spec.template.spec.containers[0].image = \"${IMAGE}\"" "$MANIFEST"
-          echo "Updated ${MANIFEST}:"
-          grep "image:" "$MANIFEST"
+
+          echo "Image: ${IMAGE}"
 
       - name: Commit updated manifest
         env:
@@ -102,7 +162,7 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add "argocd/manifests/${APP}/deployment.yaml"
+          git add "argocd/manifests/${APP}/"
           if git diff --cached --quiet; then
             echo "No manifest changes"
             exit 0
