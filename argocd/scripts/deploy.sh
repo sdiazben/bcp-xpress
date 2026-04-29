@@ -16,17 +16,32 @@ if [[ -f "$ENV_FILE" ]]; then
 fi
 
 : "${GITHUB_REPO_URL:?Set GITHUB_REPO_URL in argocd/.env}"
+: "${GITHUB_USER:?Set GITHUB_USER in argocd/.env}"
 
 # ── Read descriptor ──
 NAME=$(yq '.name' "$DESCRIPTOR")
-IMAGE=$(yq '.image' "$DESCRIPTOR")
+IMAGE=$(yq '.image // ""' "$DESCRIPTOR")
+BUILD_SOURCE=$(yq '.build.source // ""' "$DESCRIPTOR")
 PORT=$(yq '.port // 8080' "$DESCRIPTOR")
 REPLICAS=$(yq '.replicas.min // 1' "$DESCRIPTOR")
 ITSI=$(yq '.itsi' "$DESCRIPTOR")
 
-if [[ -z "$IMAGE" || "$IMAGE" == "null" ]]; then
-  echo "❌ app.yaml must specify 'image'"
+if [[ -z "$IMAGE" && -z "$BUILD_SOURCE" ]]; then
+  echo "❌ app.yaml must specify either 'image' or 'build.source'"
   exit 1
+fi
+
+# ── Resolve initial image: real one if pre-built, GHCR placeholder if building ──
+if [[ -n "$BUILD_SOURCE" ]]; then
+  OWNER_LC=$(echo "$GITHUB_USER" | tr '[:upper:]' '[:lower:]')
+  IMAGE="ghcr.io/${OWNER_LC}/${NAME}:bootstrap"
+  SOURCE_ABS="${REPO_ROOT}/${BUILD_SOURCE#./}"
+  if [[ ! -d "$SOURCE_ABS" ]]; then
+    echo "📦 Source path '${BUILD_SOURCE}' not found — scaffolding empty app folder"
+    mkdir -p "$SOURCE_ABS"
+    echo "# Place your application source here. The GitHub Actions workflow" > "${SOURCE_ABS}/README.md"
+    echo "# at .github/workflows/build-app.yml will build it on push to main." >> "${SOURCE_ABS}/README.md"
+  fi
 fi
 
 # ── Path inside the repo where ArgoCD will read manifests ──
@@ -131,7 +146,17 @@ spec:
 EOF
 
 echo ""
-echo "✅ ${NAME} deployed!"
+echo "✅ ${NAME} registered with ArgoCD!"
+echo ""
+if [[ -n "$BUILD_SOURCE" ]]; then
+  echo "📦 Build mode — image will be built by GitHub Actions:"
+  echo "   1. Add your source code to ${BUILD_SOURCE}/"
+  echo "   2. Commit and push: git add ${BUILD_SOURCE} && git commit -m 'app: ${NAME}' && git push"
+  echo "   3. GHA builds the image and updates argocd/manifests/${NAME}/deployment.yaml"
+  echo "   4. ArgoCD picks up the manifest change and syncs"
+  echo ""
+  echo "   Until first build completes, the Deployment will fail with ImagePullBackOff (expected)."
+fi
 echo ""
 echo "Watch sync status:"
 echo "  kubectl get application ${NAME} -n argocd -w"

@@ -1,0 +1,109 @@
+name: Build & deploy app images
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/**'
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  detect:
+    name: Detect changed apps
+    runs-on: ubuntu-latest
+    outputs:
+      apps: ${{ steps.changed.outputs.apps }}
+      any: ${{ steps.changed.outputs.any }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - id: changed
+        name: List apps with changed source
+        run: |
+          set -euo pipefail
+          changed=$(git diff --name-only HEAD^ HEAD -- 'apps/' \
+            | awk -F/ 'NF>=2 {print $2}' \
+            | sort -u)
+          if [[ -z "$changed" ]]; then
+            echo "any=false" >> "$GITHUB_OUTPUT"
+            echo "apps=[]" >> "$GITHUB_OUTPUT"
+          else
+            echo "any=true" >> "$GITHUB_OUTPUT"
+            echo "apps=$(echo "$changed" | jq -R . | jq -sc .)" >> "$GITHUB_OUTPUT"
+          fi
+          echo "Changed apps:"
+          echo "$changed"
+
+  build:
+    name: Build ${{ matrix.app }}
+    needs: detect
+    if: needs.detect.outputs.any == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        app: ${{ fromJSON(needs.detect.outputs.apps) }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install pack CLI
+        uses: buildpacks/github-actions/setup-pack@v5.5.4
+
+      - name: Install yq
+        run: |
+          sudo wget -qO /usr/local/bin/yq \
+            https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64
+          sudo chmod +x /usr/local/bin/yq
+
+      - name: Login to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Build image with buildpacks
+        env:
+          APP: ${{ matrix.app }}
+        run: |
+          set -euo pipefail
+          OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          IMAGE="ghcr.io/${OWNER}/${APP}:${{ github.sha }}"
+          echo "Building ${IMAGE} from apps/${APP}/"
+          pack build "${IMAGE}" \
+            --path "apps/${APP}" \
+            --builder paketobuildpacks/builder-jammy-base \
+            --publish
+          echo "IMAGE=${IMAGE}" >> "$GITHUB_ENV"
+
+      - name: Update manifest with new image tag
+        env:
+          APP: ${{ matrix.app }}
+        run: |
+          set -euo pipefail
+          MANIFEST="argocd/manifests/${APP}/deployment.yaml"
+          if [[ ! -f "$MANIFEST" ]]; then
+            echo "❌ ${MANIFEST} not found — run argocd/scripts/deploy.sh for this app first"
+            exit 1
+          fi
+          yq -i ".spec.template.spec.containers[0].image = \"${IMAGE}\"" "$MANIFEST"
+          echo "Updated ${MANIFEST}:"
+          grep "image:" "$MANIFEST"
+
+      - name: Commit updated manifest
+        env:
+          APP: ${{ matrix.app }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "argocd/manifests/${APP}/deployment.yaml"
+          if git diff --cached --quiet; then
+            echo "No manifest changes"
+            exit 0
+          fi
+          git commit -m "ci(${APP}): update image to ${IMAGE} [skip ci]"
+          git push

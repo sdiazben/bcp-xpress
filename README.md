@@ -21,25 +21,31 @@ Both share the same `app.yaml` descriptor format.
 ```bash
 cd knative
 
-# 1. Install Knative on your cluster (one-time)
+# 1. Install Knative + kpack on your cluster (one-time)
 ./scripts/setup.sh
 
-# 2. In a separate terminal, expose Knative's gateway
+# 2. Configure registry credentials for kpack builds (one-time)
+cp .env.example .env  # then fill in REGISTRY_HOST/USER/PASSWORD/TAG_PREFIX
+./scripts/registry-setup.sh
+
+# 3. In a separate terminal, expose Knative's gateway
 kubectl port-forward -n kourier-system svc/kourier 8080:80
 
-# 3. Deploy an app — the "cf push" moment
-./scripts/deploy.sh examples/app.yaml
+# 4. Deploy an app — the "cf push" moment (kpack builds the image)
+./scripts/deploy.sh examples/app-build.yaml
 
-# 4. Test it
-curl -H "Host: hello.default.127.0.0.1.sslip.io" http://localhost:8080/
+# 5. Test it
+curl -H "Host: my-service.default.127.0.0.1.sslip.io" http://localhost:8080/
 
-# 5. Clean up
-./scripts/teardown.sh hello
+# 6. Clean up
+./scripts/teardown.sh my-service
 ```
 
 See [knative/docs/how-it-works.md](knative/docs/how-it-works.md) for a script-by-script walkthrough.
 
 ## Quick Start — ArgoCD
+
+The GHA workflow at [.github/workflows/build-app.yml](.github/workflows/build-app.yml) builds source under `apps/<name>/` with buildpacks, pushes to GHCR, and bumps the image tag in the manifest. ArgoCD picks up the manifest commit and syncs.
 
 ```bash
 cd argocd
@@ -54,16 +60,33 @@ cp .env.example .env
 # 3. In a separate terminal, expose the ArgoCD UI
 kubectl port-forward -n argocd svc/argocd-server 8081:443
 
-# 4. Deploy an app — renders manifests, commits + pushes, ArgoCD syncs
-./scripts/deploy.sh examples/app.yaml
+# 4. Register the app — scaffolds apps/<name>/ if missing,
+#    creates the ArgoCD Application with a placeholder image
+#    (will fail with ImagePullBackOff initially — expected).
+./scripts/deploy.sh examples/app-build.yaml
 
-# 5. Test it (port-forward to the Service)
+# 5. Add your source code under apps/hello/, then:
+git add apps/hello argocd/manifests/hello
+git commit -m "app: hello"
+git push
+
+# 6. Watch the GHA workflow build + push the image, then commit-back to the manifest.
+#    ArgoCD then syncs and the Deployment becomes Healthy.
+./scripts/status.sh
+
+# 7. Test it (port-forward to the Service)
 kubectl port-forward svc/hello 8080:80
 curl http://localhost:8080/
 
-# 6. Clean up
+# 8. Clean up
 ./scripts/teardown.sh hello
 ```
+
+**Build details:**
+- Images go to `ghcr.io/<your-user>/<app>:<commit-sha>` (public by default)
+- Builder: `paketobuildpacks/builder-jammy-base` (auto-detects Go, Node, Python, Java, etc.)
+- The workflow only rebuilds apps whose files under `apps/<name>/` changed
+- Commit-back uses `[skip ci]` to avoid an infinite loop
 
 ## How they compare
 
@@ -73,22 +96,26 @@ curl http://localhost:8080/
 | Sync trigger | Imperative (developer runs deploy) | ArgoCD polls (3min) or webhook |
 | Autoscale | Built-in (Knative scale-to-zero) | Fixed replicas (HPA = future work) |
 | Routing | sslip.io URL via Kourier | port-forward to Service |
-| Build from source | kpack (via `build:` in app.yaml) | Pre-built images only (v1) |
+| Build from source | kpack (via `build:` in app.yaml) | GitHub Actions + buildpacks → GHCR |
 | Cluster deps | Knative Serving + Kourier + kpack | ArgoCD only |
 
 ## Project Structure
 
 ```
 bcp-xpress/
+├── .github/workflows/
+│   └── build-app.yml      # GHA: builds apps/<name>/ → GHCR, bumps argocd manifest
+├── apps/                  # Developer source code (one folder per app)
+│   └── hello/
 ├── knative/
-│   ├── scripts/         # setup, deploy, status, teardown, registry-setup
-│   ├── examples/        # app.yaml, app-build.yaml
-│   └── docs/            # how-it-works.md
+│   ├── scripts/           # setup, deploy, status, teardown, registry-setup
+│   ├── examples/          # app-build.yaml (developer descriptor)
+│   └── docs/              # how-it-works.md
 ├── argocd/
-│   ├── scripts/         # setup, deploy, status, teardown
-│   ├── examples/        # app.yaml
-│   └── manifests/       # generated K8s YAML (deploy.sh writes here)
-└── initial_arch.md      # Full architecture reference
+│   ├── scripts/           # setup, deploy, status, teardown
+│   ├── examples/          # app-build.yaml (developer descriptor)
+│   └── manifests/         # generated K8s YAML (deploy.sh writes here, GHA updates image tags)
+└── initial_arch.md        # Full architecture reference
 ```
 
 ## Next Steps
@@ -98,3 +125,4 @@ bcp-xpress/
 - [ ] Backstage frontend for self-service UI
 - [ ] CRD + operator to replace shell scripts
 - [ ] Add HPA support to argocd/ flavor
+- [ ] Make GHCR images private + add imagePullSecret to deployment manifests
