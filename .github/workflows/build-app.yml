@@ -106,6 +106,7 @@ jobs:
               REPLICAS=1
               ITSI="unknown"
             fi
+            export NAME PORT REPLICAS ITSI
 
             # Build deployment.yaml using yq (no heredoc)
             yq -n '
