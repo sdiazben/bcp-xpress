@@ -1,10 +1,12 @@
-name: hello
+name: hello-java
 build:
-  source: ./apps/hello
+  source: ./apps/hello-java
 port: 8080
 replicas:
   min: 1
 itsi: ITSI-12345
 env:
-  - name: TARGET
-    value: ArgoCD-with-GHA-build
+  - name: APP_ENV
+    value: demo
+  - name: TEAM
+    value: platform
