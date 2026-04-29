@@ -1,0 +1,25 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hello
+  labels:
+    app: hello
+    bcpxpress.yourco.io/itsi: "ITSI-12345"
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hello
+  template:
+    metadata:
+      labels:
+        app: hello
+    spec:
+      containers:
+      - name: hello
+        image: ghcr.io/sdiazben/hello:bootstrap
+        ports:
+        - containerPort: 8080
+        env:
+        - name: TARGET
+          value: "ArgoCD-with-GHA-build"
