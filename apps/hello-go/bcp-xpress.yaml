@@ -1,0 +1,10 @@
+name: hello-go
+port: 8080
+replicas:
+  min: 1
+itsi: ITSI-12345
+env:
+  - name: APP_ENV
+    value: demo
+  - name: TEAM
+    value: platform
