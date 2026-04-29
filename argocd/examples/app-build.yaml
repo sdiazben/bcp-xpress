@@ -1,6 +1,6 @@
-name: hello-java
+name: hello-go
 build:
-  source: ./apps/hello-java
+  source: ./apps/hello-go
 port: 8080
 replicas:
   min: 1
