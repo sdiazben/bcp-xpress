@@ -1,0 +1,27 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hello-java
+  labels:
+    app: hello-java
+    bcpxpress.yourco.io/itsi: ITSI-12345
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hello-java
+  template:
+    metadata:
+      labels:
+        app: hello-java
+    spec:
+      containers:
+        - name: hello-java
+          image: ghcr.io/sdiazben/hello-java:69ebec85ba47c056be8209191c8cae4d99cc2cd0
+          ports:
+            - containerPort: 8080
+          env:
+            - name: APP_ENV
+              value: demo
+            - name: TEAM
+              value: platform
